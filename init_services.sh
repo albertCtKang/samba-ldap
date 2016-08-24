@@ -1,13 +1,48 @@
 #!/bin/bash
 
-HOME=$PWD
+set -e
 
-# 
-LDAP_IP=127.0.0.1
-CN=admin
-IDEALX=example
-ORG=com
-LDAP_ADMIN_PASSWORD=coreos1234
+if [ -z $LDAP_IP ]; then
+   LDAP_IP="127.0.0.1"
+   echo "no LDAP_IP specified! (default: LDAP_IP=$LDAP_IP)"
+fi
+
+if [ -z $LDAP_ADMIN_PASSWORD ]; then
+   LDAP_ADMIN_PASSWORD=coreos1234
+   echo "no LDAP_ADMIN_PASSWORD specified! (default: LDAP_ADMIN_PASSWORD=$LDAP_ADMIN_PASSWORD)"
+fi
+
+if [ -z $CN ]; then
+   CN=admin
+   echo "no CN specified! (default: CN=$CN)"
+fi
+
+if [ -z $IDEALX ]; then
+   IDEALX=example
+   echo "no IDEALX specified! (default: IDEALX=$IDEALX)"
+fi
+
+if [ -z $ORG ]; then
+   ORG=com
+   echo "no ORG specified! (default: ORG=$ORG)"
+fi
+
+if [ -z $SMB_USER ]; then
+    SMB_USER=core
+    echo "no SMB_USER specified! (default: SMB_USER=$SMB_USER)"
+fi
+
+if [ -z $SMB_PW ]; then
+    SMB_PW=coreos1234
+    echo "no SMB_PW specified! (default: SMB_PW=$SMB_PW)"
+fi
+
+HOME=$PWD
+#LDAP_IP=127.0.0.1
+#CN=admin
+#IDEALX=example
+#ORG=com
+#LDAP_ADMIN_PASSWORD=coreos1234
 LDAP_DOMAIN=$IDEALX.$ORG
 LDAP_ORGANISATION=$IDEALX
 LDAP_SRV_PW=$LDAP_ADMIN_PASSWORD
@@ -36,32 +71,11 @@ SMB_ADMIN_IDEALX=$IDEALX
 SMB_ADMIN_ORG=$ORG
 SMB_SHARE_PATH=/srv/samba/share
 #samba default account/pwd
-SMB_DEFAULT_USER=core
-SMB_DEFAULT_PW=coreos1234
+#SMB_USER=core
+#SMB_PW=coreos1234
 
-apt-get install slapd ldap-utils libnss-ldapd libpam-ldapd samba smbldap-tools samba-doc -y
-
-set -e
-
-if [ -z $LDAP_IP ]; then
-   echo "no LDAP_IP specified! (default: LDAP_IP=$LDAP_IP)"
-fi
-
-if [ -z $LDAP_ADMIN_PASSWORD ]; then
-   echo "no LDAP_ADMIN_PASSWORD specified! (default: LDAP_ADMIN_PASSWORD=$LDAP_ADMIN_PASSWORD)"
-fi
-
-if [ -z $CN ]; then
-   echo "no CN specified! (default: CN=$CN)"
-fi
-
-if [ -z $IDEALX ]; then
-   echo "no IDEALX specified! (default: IDEALX=$IDEALX)"
-fi
-
-if [ -z $ORG ]; then
-   echo "no ORG specified! (default: ORG=$ORG)"
-fi
+/etc/init.d/slapd restart
+/etc/init.d/samba restart
 
 debconf-set-selections <<< 'slapd slapd/internal/generated_adminpw password '$LDAP_ADMIN_PASSWORD''
 debconf-set-selections <<< 'slapd slapd/internal/adminpw password '$LDAP_ADMIN_PASSWORD''
@@ -82,18 +96,16 @@ dpkg-reconfigure -f noninteractive slapd
 cp -f $HOME/ldap_conf/usr.sbin.slapd /etc/apparmor.d/usr.sbin.slapd
 cp -f $HOME/ldap_conf/slapd  /etc/default/slapd
 
-#restart ldap service
-/etc/init.d/slapd restart
 
 # Copy schema into LDAP schema dir
 cd /etc/ldap/schema
 cp -f /usr/share/doc/samba-doc/examples/LDAP/samba.schema.gz /etc/ldap/schema
 gzip -f -d /etc/ldap/schema/samba.schema.gz
-sudo cp $HOME/ldap_conf/schema_convert.conf  /etc/ldap/
+cp $HOME/ldap_conf/schema_convert.conf  /etc/ldap/
 
 # Create directory to work in :
 cd /etc/ldap
-sudo mkdir -p ldif_output
+mkdir -p ldif_output
 
 # Find Index of samba : You need to make sure it is the same as what we will be using later.
 slapcat -f schema_convert.conf -F ldif_output -n 0 | grep samba,cn=schema
@@ -146,6 +158,9 @@ sed -Ei s/__MASTER_PW__/$MASTER_PW/g /etc/smbldap-tools/smbldap_bind.conf
 chmod 0644 /etc/smbldap-tools/smbldap.conf
 chmod 0600 /etc/smbldap-tools/smbldap_bind.conf
 
+kill $(pidof slapd) 
+/etc/init.d/slapd start
+
 #populate server
 (echo $LDAP_SRV_PW; echo $LDAP_SRV_PW) | smbldap-populate
 
@@ -162,16 +177,13 @@ sed -Ei s/__ADMIN_CN__/$SMB_ADMIN_CN/g /etc/samba/smb.conf
 sed -Ei s/__ADMIN_IDEALX__/$SMB_ADMIN_IDEALX/g /etc/samba/smb.conf    
 sed -Ei s/__ADMIN_ORG__/$SMB_ADMIN_ORG/g /etc/samba/smb.conf    
 
-/etc/init.d/slapd restart
-/etc/init.d/samba restart
-
 smbpasswd -w $LDAP_SRV_PW
 #create a new Samba user
-(echo $SMB_DEFAULT_PW; echo $SMB_DEFAULT_PW) | smbldap-useradd -a -P $SMB_DEFAULT_USER
-useradd $SMB_DEFAULT_USER
-(echo $SMB_DEFAULT_PW; echo $SMB_DEFAULT_PW) | smbpasswd -a $SMB_DEFAULT_USER
+(echo $SMB_PW; echo $SMB_PW) | smbldap-useradd -a -P $SMB_USER
+useradd $SMB_USER
+(echo $SMB_PW; echo $SMB_PW) | smbpasswd -a $SMB_USER
 
-ldapsearch -x -LLL -H ldap:/// -b dc=$IDEALX,dc=$ORG dn | grep $SMB_DEFAULT_USER
+ldapsearch -x -LLL -H ldap:/// -b dc=$IDEALX,dc=$ORG dn | grep $SMB_USER
 
 # wait indefinetely
 while true
