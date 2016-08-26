@@ -183,10 +183,7 @@ smbpasswd -w $LDAP_SRV_PW
 useradd $SMB_USER
 (echo $SMB_PW; echo $SMB_PW) | smbpasswd -a $SMB_USER
 
-#updating smb configuration
 /etc/init.d/samba restart
-
-ldapsearch -x -LLL -H ldap:/// -b dc=$IDEALX,dc=$ORG dn | grep $SMB_USER
 
 # wait indefinetely
 while true

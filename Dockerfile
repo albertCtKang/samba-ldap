@@ -1,5 +1,5 @@
-FROM ubuntu:14.04
-MAINTAINER Albert Kang <albert.kang@qnap.com>
+FROM ubuntu:14.04.3
+MAINTAINER Albert Kang <albertctkang@gmail.com>
 
 ##################
 ##   BUILDING   ##
@@ -11,11 +11,14 @@ ENV DEBIAN_FRONTEND noninteractive
 RUN ln -s -f /bin/true /usr/bin/chfn
 
 # Versions to use
-ENV slapd_version XXX
-ENV samba_version XXX
+ENV SLAPD_VERSION 2.4.31-1+nmu2ubuntu8.3
+ENV SAMBA_VERSION 2:4.3.9+dfsg-0ubuntu0.14.04.3
 
 # Install prerequisites:
-RUN apt-get --quiet --yes install slapd ldap-utils libnss-ldapd libpam-ldapd samba smbldap-tools samba-doc debconf-utils
+RUN apt-get --quiet --yes install slapd=${SLAPD_VERSION} ldap-utils libnss-ldapd libpam-ldapd samba=${SAMBA_VERSION} smbldap-tools samba-doc debconf-utils
+RUN apt-get --quiet --yes autoclean \
+    &&  apt-get --quiet --yes autoremove \
+    &&  apt-get --quiet --yes clean
 WORKDIR /usr/local/src
 
 RUN mkdir -p /usr/loca/src/ldap_conf
